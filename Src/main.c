@@ -1,5 +1,6 @@
 #include "main.h"
 #include "stm32f4xx_hal_cortex.h"
+#include "stm32f4xx_hal_gpio.h"
 #include "stm32f4xx_hal_rcc.h"
 
 #define sample_times 12
@@ -334,7 +335,7 @@ void relay_init(void){
         // Set as analog mode
         .Mode = GPIO_MODE_OUTPUT_PP, 
         // No push pull
-        .Pull = GPIO_PULLUP, 
+        .Pull = GPIO_NOPULL, 
         // LOW doesnt matter anyways
         .Speed = GPIO_SPEED_FAST,
     };
@@ -374,7 +375,7 @@ void indicator_init(void){
         // Set as analog mode
         .Mode = GPIO_MODE_OUTPUT_PP, 
         // No push pull
-        .Pull = GPIO_PULLUP, 
+        .Pull = GPIO_NOPULL, 
         // LOW doesnt matter anyways
         .Speed = GPIO_SPEED_LOW,
     };
