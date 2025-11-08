@@ -1,21 +1,23 @@
 #include "main.h"
+#include "stm32f4xx_hal_cortex.h"
+#include "stm32f4xx_hal_rcc.h"
 
-#define sample_times 12.00
+#define sample_times 12
 
 // Semaphore for the main loop
 volatile bool Sign = false;
 
 // Ping pong buffers for the adc 
-static float adc_Current_data_A[(int)sample_times];
-static float adc_Current_data_B[(int)sample_times];
-static float adc_Voltage_data_A[(int)sample_times];
-static float adc_Voltage_data_B[(int)sample_times];
+static float adc_Current_data_A[sample_times];
+static float adc_Current_data_B[sample_times];
+static float adc_Voltage_data_A[sample_times];
+static float adc_Voltage_data_B[sample_times];
 
 // Buffer selection
 volatile uint8_t active_buffer = 0;
 
 // To dynamically set the time period for the phase locked loop
-volatile uint32_t g_current_period = 20000; // The 1MHz ticks for one cycle
+volatile uint32_t g_current_period = 20000.00; // The 1MHz ticks for one cycle
 
 // Hardware Handles
 TIM_HandleTypeDef adc_trigger;
@@ -38,8 +40,8 @@ int main (void){
     TableSetup(ktable);
 
     // The sin and cos lookup tables built on bootup
-    static float cos_table[(int)sample_times];
-    static float sin_table[(int)sample_times];
+    static float cos_table[sample_times];
+    static float sin_table[sample_times];
 
     // Built the sin and cos tables based on the sample times
     setupTrig(cos_table, sin_table);
@@ -116,7 +118,7 @@ int main (void){
 
             if(fund_sqcurrent > pickup_squared){
                 double psm = sqrt(fund_sqcurrent/pickup_squared);
-                double delta_T = (double)(g_current_period / sample_times) / 1000000.0;
+                double delta_T = (double)g_current_period/(sample_times * 1000000.0);
                 double norm_progress = ptable[PSM_TO_I(psm)];
                 progress += norm_progress * delta_T;
                 if(progress >= 65535 && toTrip){
@@ -350,7 +352,7 @@ void timer_init(void) {
     // Count up
     adc_trigger.Init.CounterMode = TIM_COUNTERMODE_UP;
     // Let the period be 0 we will update once zero crosser is ready
-    adc_trigger.Init.Period = g_current_period/(int)sample_times; 
+    adc_trigger.Init.Period = g_current_period/sample_times; 
     // no div
     adc_trigger.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
     adc_trigger.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
@@ -502,9 +504,10 @@ void adc_init(void){
         .SamplingTime = ADC_SAMPLETIME_84CYCLES,
     };
 
+    HAL_ADC_ConfigChannel(&adc_handle, &ADC_Channel_Current_InitStruct);
+
     HAL_ADC_ConfigChannel(&adc_handle, &ADC_Channel_Voltage_InitStruct);
 
-    HAL_ADC_ConfigChannel(&adc_handle, &ADC_Channel_Current_InitStruct);
 
     __HAL_ADC_ENABLE(&adc_handle);
     __HAL_ADC_ENABLE_IT(&adc_handle, ADC_IT_EOC);
@@ -536,6 +539,7 @@ static void SystemClock_Config(void)
   RCC_OscInitStruct.PLL.PLLN = 336;
   RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV4;
   RCC_OscInitStruct.PLL.PLLQ = 7;
+  HAL_RCC_OscConfig(&RCC_OscInitStruct);
   //if(HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   //{
   //  Error_Handler();
@@ -547,9 +551,24 @@ static void SystemClock_Config(void)
   RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
   RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
   RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;  
-  RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;  
+  RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
+  HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2);
   //if(HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2) != HAL_OK)
   //{
   //  Error_Handler();
   //}
+  SystemCoreClockUpdate(); 
+  HAL_SYSTICK_Config(HAL_RCC_GetHCLKFreq() / 1000);
+  // Re-configure the Systick timer to use the new 84MHz HCLK
+  // This fixes HAL_Delay() and all HAL timeouts.
+  //if (HAL_SYSTICK_Config(HAL_RCC_GetHCLKFreq() / 1000) != HAL_OK)
+  //{
+  //    Error_Handler();
+  //}
+
+  // Set the Systick clock source to HCLK
+  HAL_SYSTICK_CLKSourceConfig(SYSTICK_CLKSOURCE_HCLK);
+
+  // Re-set the SysTick interrupt priority
+  HAL_NVIC_SetPriority(SysTick_IRQn, 0, 0);
 }
