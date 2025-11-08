@@ -28,7 +28,7 @@ volatile bool toTrip = false;
 int main (void){
     // Initialize HAL
     HAL_Init();
-
+    SystemClock_Config();
     // Variables for persistant metrics
     static double progress = 0;
     static constTable ktable[7];
@@ -62,22 +62,35 @@ int main (void){
     relay_init();
     pll_init();
     timer_init();
-
+    indicator_init();
     // start all the interrupts and timers
     HAL_TIM_IC_Start_IT(&zero_handle, TIM_CHANNEL_4);
     HAL_TIM_Base_Start(&adc_trigger);
     HAL_ADC_Start_IT(&adc_handle);
 
+    // Turn on the indicator
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_15, GPIO_PIN_SET);
     while(1){
         // Is the semaphore set
         if(Sign == true){
 
-            Sign = false;
+            uint8_t buffer_to_process;
 
+            // Disable the ADC interrupt to prevent 'active_buffer'
+            // and 'Sign' from being changed while we read them.
+            HAL_NVIC_DisableIRQ(ADC_IRQn);
+
+            // Latch the buffer that is ready for processing
+            buffer_to_process = active_buffer; 
+            // Clear the flag *inside* the critical section
+            Sign = false; 
+
+            // Re-enable the interrupt
+            HAL_NVIC_EnableIRQ(ADC_IRQn);
             complexNum current_filt;
             complexNum voltage_filt;
 
-            if(active_buffer == 0){
+            if(buffer_to_process == 0){
                 current_filt = getFiltered(adc_Current_data_A, cos_table, sin_table);
                 voltage_filt = getFiltered(adc_Voltage_data_A, cos_table, sin_table);
             }
@@ -172,16 +185,17 @@ void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim) {
 
         // (The timer automatically handles the 16-bit rollover)
         uint32_t period = current_capture - last_capture;
+        if(period > 10000) {
+            // Save the current time for the *next* interrupt
+            last_capture = current_capture;
+            // store the current period
+            g_current_period = period;
+            // Calculate the new sample interval
+            uint32_t new_sample_period = period / sample_times; 
 
-        // Save the current time for the *next* interrupt
-        last_capture = current_capture;
-        // store the current period
-        g_current_period = period;
-        // Calculate the new sample interval
-        uint32_t new_sample_period = period / sample_times; 
-
-        // This macro instantly updates TIM2's period (ARR)
-        __HAL_TIM_SET_AUTORELOAD(&adc_trigger, new_sample_period);
+            // This macro instantly updates TIM2's period (ARR)
+            __HAL_TIM_SET_AUTORELOAD(&adc_trigger, new_sample_period);
+        }
     }
 }
 
@@ -225,11 +239,11 @@ double getTime(constTable *curTable, relayType *curRelay, double current_PSM){
     if(current_PSM >= 1.5){
         time = curTable[curRelay->type].constT;
         time += curTable[curRelay->type].constK/pow((current_PSM-curTable[curRelay->type].constC),curTable[curRelay->type].constP);
-        time *= (curRelay[curRelay->type].time_delay/24000);
+        time *= (curRelay->time_delay/24000.0);
     }
     else {
         time = curTable[curRelay->type].constR/((current_PSM)-1);
-        time *= curRelay[curRelay->type].time_delay/24000;
+        time *= curRelay->time_delay/24000.0;
     }
     return time;
 }
@@ -336,7 +350,7 @@ void timer_init(void) {
     // Count up
     adc_trigger.Init.CounterMode = TIM_COUNTERMODE_UP;
     // Let the period be 0 we will update once zero crosser is ready
-    adc_trigger.Init.Period = 0; 
+    adc_trigger.Init.Period = g_current_period/(int)sample_times; 
     // no div
     adc_trigger.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
     adc_trigger.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
@@ -348,6 +362,22 @@ void timer_init(void) {
     sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
     HAL_TIMEx_MasterConfigSynchronization(&adc_trigger, &sMasterConfig);
 
+}
+
+void indicator_init(void){
+    // Initialize PA15 as an digital output pin
+    GPIO_InitTypeDef GPIO_InitStruct = {
+        // Pin 3
+        .Pin = GPIO_PIN_15, 
+        // Set as analog mode
+        .Mode = GPIO_MODE_OUTPUT_PP, 
+        // No push pull
+        .Pull = GPIO_PULLUP, 
+        // LOW doesnt matter anyways
+        .Speed = GPIO_SPEED_LOW,
+    };
+
+    HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 }
 
 // setup a phase locked loops to trigger the adc based on incoming exti interrupts
@@ -481,4 +511,45 @@ void adc_init(void){
     HAL_NVIC_SetPriority(ADC_IRQn, 1, 0);
     HAL_NVIC_EnableIRQ(ADC_IRQn);
 
+}
+
+static void SystemClock_Config(void)
+{
+  RCC_ClkInitTypeDef RCC_ClkInitStruct;
+  RCC_OscInitTypeDef RCC_OscInitStruct;
+
+  /* Enable Power Control clock */
+  __HAL_RCC_PWR_CLK_ENABLE();
+  
+  /* The voltage scaling allows optimizing the power consumption when the device is 
+     clocked below the maximum system frequency, to update the voltage scaling value 
+     regarding system frequency refer to product datasheet.  */
+  __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE1);
+  
+  /* Enable HSI Oscillator and activate PLL with HSI as source */
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
+  RCC_OscInitStruct.HSIState = RCC_HSI_ON;
+  RCC_OscInitStruct.HSICalibrationValue = 0x10;
+  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
+  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI;
+  RCC_OscInitStruct.PLL.PLLM = 16;
+  RCC_OscInitStruct.PLL.PLLN = 336;
+  RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV4;
+  RCC_OscInitStruct.PLL.PLLQ = 7;
+  //if(HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
+  //{
+  //  Error_Handler();
+  //}
+  
+  /* Select PLL as system clock source and configure the HCLK, PCLK1 and PCLK2 
+     clocks dividers */
+  RCC_ClkInitStruct.ClockType = (RCC_CLOCKTYPE_SYSCLK | RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2);
+  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
+  RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
+  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;  
+  RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;  
+  //if(HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2) != HAL_OK)
+  //{
+  //  Error_Handler();
+  //}
 }

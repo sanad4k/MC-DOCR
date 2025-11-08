@@ -8,7 +8,7 @@
 // BASE STM32 HEADER
 #include "stm32f4xx.h"
 #include "stm32f401xe.h"
-
+#include "stm32f4xx_hal.h"
 // HAL DRIVERS
 #include "stm32f4xx_hal_adc.h"
 #include "stm32f4xx_hal_tim.h"
@@ -51,6 +51,8 @@ typedef struct {
     double img;
 } complexNum;
 
+static void SystemClock_Config(void);
+
 void adc_init(void);
 
 void TableSetup(constTable *mytable);
@@ -74,3 +76,5 @@ void pll_init(void);
 void timer_init(void);
 
 void setupTrig(float *cos_table, float *sin_table);
+
+void indicator_init(void);
