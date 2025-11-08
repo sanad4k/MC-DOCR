@@ -1,3 +1,0 @@
-/home/johnr/Devel/PS_assign/build/CMakeFiles/OC_Relay.elf.dir
-/home/johnr/Devel/PS_assign/build/CMakeFiles/edit_cache.dir
-/home/johnr/Devel/PS_assign/build/CMakeFiles/rebuild_cache.dir
