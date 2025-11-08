@@ -78,3 +78,5 @@ void timer_init(void);
 void setupTrig(float *cos_table, float *sin_table);
 
 void indicator_init(void);
+
+void quickWalk();

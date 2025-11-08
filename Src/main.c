@@ -28,6 +28,9 @@ TIM_HandleTypeDef zero_handle;
 // Set based on the direction
 volatile bool toTrip = false;
 
+// Tripped or not
+volatile bool tripped = false;
+
 int main (void){
     // Initialize HAL
     HAL_Init();
@@ -122,9 +125,15 @@ int main (void){
                 double delta_T = (double)g_current_period/(sample_times * 1000000.0);
                 double norm_progress = ptable[PSM_TO_I(psm)];
                 progress += norm_progress * delta_T;
-                if(progress >= 65535 && toTrip){
+                // Only trip if we reach target and direction is correct and relay is not already tripped
+                if(progress >= 65535 && toTrip && !tripped){
                     quickTrip();
                 }
+            }
+
+            else if(tripped){
+                quickWalk();
+                progress = 0;
             }
 
             else{
@@ -233,6 +242,14 @@ double getRMSquared(complexNum current_fund){
 void quickTrip(){
 
     HAL_GPIO_WritePin(GPIOA, GPIO_PIN_3, GPIO_PIN_SET); 
+    tripped = true;
+
+}
+
+void quickWalk(){
+
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_3, GPIO_PIN_RESET);
+    tripped = false;
 
 }
 
