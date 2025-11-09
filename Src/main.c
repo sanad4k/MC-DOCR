@@ -75,7 +75,7 @@ int main (void){
     HAL_ADC_Start_IT(&adc_handle);
 
     // Turn on the indicator
-    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_15, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_10, GPIO_PIN_SET);
     while(1){
         // Is the semaphore set
         if(Sign == true){
@@ -344,7 +344,7 @@ double map(double x, double in_min, double in_max, double out_min, double out_ma
 
 // Intitialize the relay
 void relay_init(void){
-
+    __HAL_RCC_GPIOA_CLK_ENABLE();
     // Initialize PA3 as an digital output pin
     GPIO_InitTypeDef GPIO_InitStruct = {
         // Pin 3
@@ -385,10 +385,11 @@ void timer_init(void) {
 }
 
 void indicator_init(void){
+    __HAL_RCC_GPIOA_CLK_ENABLE();
     // Initialize PA15 as an digital output pin
     GPIO_InitTypeDef GPIO_InitStruct = {
         // Pin 3
-        .Pin = GPIO_PIN_15, 
+        .Pin = GPIO_PIN_10, 
         // Set as analog mode
         .Mode = GPIO_MODE_OUTPUT_PP, 
         // No push pull
